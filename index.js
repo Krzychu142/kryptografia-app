@@ -163,7 +163,7 @@ async function verifyUser(email) {
   });
 }
 
-// Test one at a time
+// Test one at one run appliaction
 
 // Create user - to this email we will send veryfication code
 // addUser("kustosz142@gmail.com", "hasloPrzykladowe");
