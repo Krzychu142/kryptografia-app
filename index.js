@@ -12,7 +12,7 @@ const readline = require("readline");
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "kustosz142@gmail.com",
+    user: process.env.USER,
     pass: process.env.PASS,
   },
 });
@@ -92,11 +92,17 @@ async function verifyUser(email) {
     console.log("User with this email does not exist");
     return false;
   }
+  if (existingUser.isBlocked) {
+    console.log(
+      "This account has been blocked, please contact an administrator."
+    );
+    return false;
+  }
 
   // Send email to user with verification code
   const verificationCode = crypto.randomBytes(4).toString("hex");
   const mailOptions = {
-    from: "kustosz142@gmail.com",
+    from: process.env.USER,
     to: email,
     subject: "Verification Code",
     text: `Your verification code is: ${verificationCode}`,
@@ -113,44 +119,66 @@ async function verifyUser(email) {
       });
       let enteredPassword;
       let enteredCode;
-      rl.question("Enter password: ", async (password) => {
-        enteredPassword = password;
-        rl.question("Enter verification code: ", async (code) => {
-          enteredCode = code;
-          rl.close();
+      let counter = 0;
 
-          // Verify password and code
+      const askPassword = () => {
+        rl.question("Enter password: ", async (password) => {
+          enteredPassword = password;
+
+          // Verify password
           const isPasswordCorrect = await argon2.verify(
             existingUser.password,
             enteredPassword
           );
           if (!isPasswordCorrect) {
-            console.log("Incorrect password");
-            return false;
+            counter++;
+            if (counter >= 3) {
+              console.log("Account blocked, too many incorrect passwords.");
+              await client
+                .db("mydb")
+                .collection("users")
+                .updateOne({ email: email }, { $set: { isBlocked: true } });
+              return false;
+            } else {
+              console.log("Incorrect password, please try again.");
+              askPassword();
+            }
+          } else {
+            rl.question("Enter verification code: ", async (code) => {
+              enteredCode = code;
+              rl.close();
+              if (enteredCode !== verificationCode) {
+                console.log("Incorrect verification code");
+                return false;
+              }
+              // User has authenticated successfully
+              console.log("User authenticated successfully");
+              return true;
+            });
           }
-          if (enteredCode !== verificationCode) {
-            console.log("Incorrect verification code");
-            return false;
-          }
-
-          // User has authenticated successfully
-          console.log("User authenticated successfully");
-          return true;
         });
-      });
+      };
+      askPassword();
     }
   });
 }
 
-// Try to create a user with "worng paternt" email
-// addUser("jannowak", "przykładoweHasło");
+// Test one at a time
+
+// Create user - to this email we will send veryfication code
 // addUser("kustosz142@gmail.com", "hasloPrzykladowe");
 
-// verifyUser("jannowak@gmail.com", "przykładoweHasło").then((result) => {
-//   console.log("dobra proba " + result);
-// });
+// Try create user with "worng paternt" email
+// addUser("jannowak", "przykładoweHasło");
 
-verifyUser("kustosz142@gmail.com");
-// verifyUser("jannowak@gmail.com", "złeHasło").then((result) => {
-//   console.log("zla proba " + result);
-// });
+// Try create user - user with this email already exist in DB
+// addUser("kustosz142@gmail.com", "hasloPrzykladowe");
+
+// For the first time perform the veryfication correctly
+// verifyUser("kustosz142@gmail.com");
+
+// For the secon time enter the wrong password three times
+// verifyUser("kustosz142@gmail.com");
+
+// Try after that reauthorization again
+// verifyUser("kustosz142@gmail.com");
